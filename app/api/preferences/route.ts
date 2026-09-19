@@ -1,0 +1,4 @@
+import { context,json,failure } from '@/lib/server-health';
+export async function GET(req:Request){try{const {db,userId}=await context(req);const row=await db.prepare('SELECT goal FROM health_preferences WHERE user_id=?').bind(userId).first();return json({goal:row?.goal??8000});}catch(e){return failure(e)}}
+export async function PUT(req:Request){try{const {db,userId}=await context(req,true);const {goal}=await req.json() as {goal:number};if(!Number.isInteger(goal)||goal<1000||goal>100000)return json({error:'목표는 1,000~100,000보로 입력해주세요.'},400);await db.prepare('INSERT INTO health_preferences(user_id,goal) VALUES (?,?) ON CONFLICT(user_id) DO UPDATE SET goal=excluded.goal').bind(userId,goal).run();return json({goal});}catch(e){if(e instanceof SyntaxError)return json({error:'목표를 확인해주세요.'},400);return failure(e)}}
+
