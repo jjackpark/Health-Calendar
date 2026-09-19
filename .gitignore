@@ -45,3 +45,10 @@ next-env.d.ts
 /outputs/
 /work/
 *.tsbuildinfo
+/android/.gradle/
+/android/.kotlin/
+/android/local.properties
+/android/**/build/
+*.keystore
+*.jks
+*.p12

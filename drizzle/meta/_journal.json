@@ -8,6 +8,13 @@
       "when": 1789788528939,
       "tag": "0000_mighty_colossus",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "6",
+      "when": 1789809852764,
+      "tag": "0001_nice_lizard",
+      "breakpoints": true
     }
   ]
 }

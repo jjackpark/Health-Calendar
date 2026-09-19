@@ -1,0 +1,31 @@
+import assert from 'node:assert/strict';
+const base='http://localhost:5173';
+const login=await fetch(base+'/signin-with-chatgpt?return_to=/',{redirect:'manual'});
+const cookie=login.headers.getSetCookie().map(x=>x.split(';')[0]).join('; ');
+const call=(path,method='GET',body,token,authenticated=false)=>fetch(base+path,{method,headers:{...(authenticated?{cookie,origin:base}:{}),...(token?{authorization:'Bearer '+token}:{}),'Content-Type':'application/json'},body:body===undefined?undefined:JSON.stringify(body)});
+const owner=(path,method='GET',body)=>call(path,method,body,undefined,true);
+const key=days=>{const d=new Date();d.setDate(d.getDate()-days);return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`};
+const d1=key(29),d2=key(28);
+const records=async()=> (await (await owner(`/api/records?from=${d1}&to=${d2}`)).json()).records;
+assert.equal((await records()).length,0,'Test dates must be empty before running');
+assert.equal((await call('/api/device')).status,401);
+let token;
+try{
+ const code=await (await owner('/api/device','POST')).json();assert.match(code.code,/^[a-f0-9]{24}$/);
+ const paired=await call('/api/device/pair','POST',{code:code.code,name:'Local test device'});assert.equal(paired.status,200);token=(await paired.json()).token;
+ assert.equal((await call('/api/device/pair','POST',{code:code.code,name:'Replay'})).status,401);
+ assert.equal((await call('/api/records?from='+d1+'&to='+d2,'GET',undefined,token)).status,401,'Device token cannot read records');
+ const snapshot={observedAt:Date.now(),timezone:Intl.DateTimeFormat().resolvedOptions().timeZone,background:true,days:[{date:d1,steps:9000},{date:d2,steps:8765}]};
+ assert.equal((await owner('/api/records','PUT',{date:d1,metric:'steps',value:1250})).status,200);
+ assert.equal((await call('/api/device/sync','POST',snapshot)).status,401);
+ assert.equal((await call('/api/device/sync','POST',{...snapshot,userId:'other-user'},token)).status,400);
+ for(let i=0;i<2;i++)assert.equal((await call('/api/device/sync','POST',snapshot,token)).status,200);
+ let rows=await records();assert.equal(rows.find(r=>r.date===d1).value,1250,'Manual override preserved');assert.equal(rows.find(r=>r.date===d2).value,8765,'Replay is idempotent');assert.equal(rows.find(r=>r.date===d2).source,'health_connect');
+ const older={...snapshot,observedAt:snapshot.observedAt-1000,days:[{date:d2,steps:1}]};assert.equal((await call('/api/device/sync','POST',older,token)).status,200);assert.equal((await records()).find(r=>r.date===d2).value,8765,'Stale snapshot ignored');
+ assert.equal((await call('/api/device/sync','POST',{...snapshot,days:[{date:'2099-01-01',steps:20}]},token)).status,400);
+ assert.equal((await call('/api/device/sync','POST',{...snapshot,days:[{date:d1,steps:1},{date:d1,steps:2}]},token)).status,400);
+ assert.equal((await call('/api/device/sync','POST',{...snapshot,observedAt:Date.now(),days:[{date:d1,steps:null},{date:d2,steps:null}]},token)).status,200);rows=await records();assert.equal(rows.length,1);assert.equal(rows[0].value,1250,'Null never deletes manual records');
+ const status=await (await owner('/api/device')).json();assert.equal(status.device.name,'Local test device');assert.ok(status.device.last_sync_at);
+ await owner('/api/device','DELETE');assert.equal((await call('/api/device/sync','POST',snapshot,token)).status,401,'Revoked device rejected');
+ console.log('PASS: one-time pairing, write-only token, account-field rejection, idempotence, manual precedence, stale snapshots, date validation, null cleanup, status and revoke');
+}finally{await owner('/api/device','DELETE');for(const date of [d1,d2])await owner(`/api/records?date=${date}&metric=steps`,'DELETE');}

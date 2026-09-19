@@ -1,0 +1,5 @@
+import { context,json,failure } from '@/lib/server-health';
+import { randomSecret,hashSecret } from '@/lib/device-sync';
+export async function GET(req:Request){try{const {db,userId}=await context(req);const device=await db.prepare('SELECT name,created_at,last_sync_at,background,timezone FROM health_devices WHERE user_id=?').bind(userId).first();return json({device});}catch(e){return failure(e)}}
+export async function POST(req:Request){try{const {db,userId}=await context(req,true);const code=randomSecret(12);const expiresAt=Date.now()+10*60000;await db.prepare('INSERT INTO health_pairing_codes(user_id,code_hash,expires_at) VALUES (?,?,?) ON CONFLICT(user_id) DO UPDATE SET code_hash=excluded.code_hash,expires_at=excluded.expires_at').bind(userId,await hashSecret(code),expiresAt).run();return json({code,expiresAt});}catch(e){return failure(e)}}
+export async function DELETE(req:Request){try{const {db,userId}=await context(req,true);await db.batch([db.prepare('DELETE FROM health_devices WHERE user_id=?').bind(userId),db.prepare('DELETE FROM health_pairing_codes WHERE user_id=?').bind(userId)]);return json({ok:true});}catch(e){return failure(e)}}
