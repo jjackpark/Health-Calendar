@@ -30,6 +30,7 @@ class MainActivity : ComponentActivity() {
  private lateinit var connection: TextView
  private lateinit var background: TextView
  private lateinit var lastSync: TextView
+ private lateinit var interval: Spinner
  private val actionButtons = mutableListOf<Button>()
  private var running = false
  private val permissions = registerForActivityResult(PermissionController.createRequestPermissionResultContract()) { granted ->
@@ -80,8 +81,26 @@ class MainActivity : ComponentActivity() {
   text("3. 자동 동기화", 18, "#172B28", true, 28)
   background = text("", 15, "#657773", false, 8)
   button("백그라운드 접근 허용") { requestHealthPermissions(true) }
+  text("동기화 간격", 15, "#496353", true, 16)
+  val intervalLabels = listOf("15분마다 · 배터리 사용 증가", "1시간마다 · 권장", "3시간마다", "6시간마다", "수동으로만")
+  val intervalValues = intArrayOf(15, 60, 180, 360, 0)
+  interval = Spinner(this).apply {
+   adapter = ArrayAdapter(this@MainActivity, android.R.layout.simple_spinner_dropdown_item, intervalLabels)
+   setSelection(intervalValues.indexOf(vault.syncMinutes()).coerceAtLeast(0), false)
+   onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
+    private var initialized = false
+    override fun onNothingSelected(parent: AdapterView<*>?) = Unit
+    override fun onItemSelected(parent: AdapterView<*>?, view: View?, position: Int, id: Long) {
+     if (!initialized) { initialized = true; return }
+     val value = intervalValues[position]; vault.syncMinutes(value)
+     lifecycleScope.launch { configureSchedule(); refresh() }
+     status.text = if (value == 0) "자동 동기화를 껐습니다. ‘지금 동기화’로 가져올 수 있어요." else "자동 동기화 간격을 ${intervalLabels[position].substringBefore('·').trim()}로 변경했습니다."
+    }
+   }
+  }
+  content.addView(interval, LinearLayout.LayoutParams(-1, dp(56)).apply { topMargin = dp(8) })
   button("지금 동기화", true) { runTask { configureSchedule(); HealthSync.sync(this@MainActivity, false) } }
-  text("자동 동기화는 약 1시간 간격으로 요청됩니다. 절전 모드와 삼성헬스의 데이터 반영 시점에 따라 늦어질 수 있습니다. 웹에서 직접 입력한 걸음은 유지됩니다.", 14, "#657773", false, 14)
+  text("15분은 Android가 허용하는 가장 짧은 안정적 주기이며 배터리를 더 사용합니다. 절전 모드와 삼성헬스 반영 시점에 따라 늦어질 수 있습니다. 웹에서 직접 입력한 걸음은 유지됩니다.", 14, "#657773", false, 14)
   button("헬스 커넥트 설정") {
    try { startActivity(Intent(HealthConnectClient.ACTION_HEALTH_CONNECT_SETTINGS)) }
    catch (_: Exception) { openUrl("https://play.google.com/store/apps/details?id=com.google.android.apps.healthdata") }
@@ -111,7 +130,7 @@ class MainActivity : ComponentActivity() {
  private suspend fun configureSchedule() {
   val client = HealthConnectClient.getOrCreate(this)
   val granted = client.permissionController.getGrantedPermissions()
-  if (vault.token() != null && HealthSync.backgroundAvailable(client) && granted.containsAll(setOf(HealthSync.readPermission, HealthSync.backgroundPermission))) SyncWorker.schedule(this) else SyncWorker.cancel(this)
+  if (vault.token() != null && HealthSync.backgroundAvailable(client) && granted.containsAll(setOf(HealthSync.readPermission, HealthSync.backgroundPermission))) SyncWorker.schedule(this, vault.syncMinutes()) else SyncWorker.cancel(this)
  }
  private fun runTask(block: suspend () -> String) {
   if (running) return
@@ -130,7 +149,7 @@ class MainActivity : ComponentActivity() {
   if (!HealthSync.available(this)) { background.text = "헬스 커넥트 설치 또는 업데이트가 필요합니다."; return }
   lifecycleScope.launch {
    try { val client = HealthConnectClient.getOrCreate(this@MainActivity); val granted = client.permissionController.getGrantedPermissions()
-    background.text = if (!HealthSync.backgroundAvailable(client)) "이 휴대폰은 앱을 열 때 자동으로 동기화됩니다." else if (HealthSync.backgroundPermission in granted) "백그라운드 동기화 권한이 허용되었습니다." else "앱을 닫아도 동기화하려면 백그라운드 접근을 허용해주세요."
+    background.text = if (!HealthSync.backgroundAvailable(client)) "이 휴대폰은 앱을 열 때 자동으로 동기화됩니다." else if (HealthSync.backgroundPermission in granted) { val minutes=vault.syncMinutes(); if(minutes==0) "백그라운드 권한이 허용되어 있으며 자동 동기화는 꺼져 있습니다." else "백그라운드 동기화 권한이 허용되었습니다. 현재 간격: ${if(minutes<60) "${minutes}분" else "${minutes/60}시간"}" } else "앱을 닫아도 동기화하려면 백그라운드 접근을 허용해주세요."
    } catch (_: Exception) { background.text = "헬스 커넥트 권한을 확인해주세요." }
   }
  }

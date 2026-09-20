@@ -36,4 +36,6 @@ class TokenVault(context: Context) {
  fun status(): String = preferences.getString("status", "아직 동기화 전입니다.")!!
  fun synced() { preferences.edit().putLong("last_sync", System.currentTimeMillis()).apply() }
  fun lastSync(): Long = preferences.getLong("last_sync", 0)
+ fun syncMinutes(): Int = preferences.getInt("sync_minutes", 60)
+ fun syncMinutes(value: Int) { preferences.edit().putInt("sync_minutes", value).apply() }
 }

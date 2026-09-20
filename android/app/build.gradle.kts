@@ -7,8 +7,8 @@ android {
   applicationId = "com.jjackpark.healthcalendar"
   minSdk = 28
   targetSdk = 35
-  versionCode = 1
-  versionName = "1.0.0"
+  versionCode = 2
+  versionName = "1.1.0"
   buildConfigField("String", "SITE_URL", "\"https://health-calendar-jjack.jjackpark.chatgpt.site\"")
  }
  buildFeatures { buildConfig = true }

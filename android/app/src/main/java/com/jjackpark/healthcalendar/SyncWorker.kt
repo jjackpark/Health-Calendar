@@ -18,8 +18,10 @@ class SyncWorker(context: Context, parameters: WorkerParameters) : CoroutineWork
  }
  companion object {
   private const val NAME = "health-calendar-step-sync"
-  fun schedule(context: Context) {
-   val request = PeriodicWorkRequestBuilder<SyncWorker>(1, TimeUnit.HOURS, 15, TimeUnit.MINUTES)
+  fun schedule(context: Context, minutes: Int = TokenVault(context).syncMinutes()) {
+   if (minutes == 0) { cancel(context); return }
+   val safeMinutes = minutes.coerceAtLeast(15)
+   val request = PeriodicWorkRequestBuilder<SyncWorker>(safeMinutes.toLong(), TimeUnit.MINUTES, 5.coerceAtMost(safeMinutes).toLong(), TimeUnit.MINUTES)
     .setConstraints(Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build())
     .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, 30, TimeUnit.SECONDS).build()
    WorkManager.getInstance(context).enqueueUniquePeriodicWork(NAME, ExistingPeriodicWorkPolicy.UPDATE, request)
